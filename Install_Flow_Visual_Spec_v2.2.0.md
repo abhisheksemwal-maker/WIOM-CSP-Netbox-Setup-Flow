@@ -1056,28 +1056,81 @@ The previous v2.1 DRAFT specced a full-width pink-tint "Save Aadhaar photos" car
 
 ---
 
-### 3.12 S15 — ISP Recharge Audio
+### 3.12 S15 — ISP Recharge Audio + ISP Account Method Picker Sheet
 
-**Purpose.** Third audio briefing (after S03 PayG Acknowledge and S08c PayG System Info). Plays a 9.2-second clip explaining that the ISP recharge is a **system action, not a customer payment** — important to prevent agents from trying to collect the ISP plan cost from the customer.
+**Purpose.** Third audio briefing (after S03 PayG Acknowledge and S08c PayG System Info). Plays a 9.2-second clip explaining that the ISP recharge is a **system action, not a customer payment** — important to prevent agents from trying to collect the ISP plan cost from the customer. After the audio completes and the agent acknowledges via the "समझ गया" CTA, a two-step bottom sheet opens that asks how the agent wants to create the ISP account (self via portal, or send to office via WhatsApp / Call). The picker's terminal CTAs each fire a system intent (Chrome / WhatsApp / dialer) and navigate the wizard to S16 in the same step — when the agent returns from the external app, the in-app stack is already on S16 with no transition flash.
+
+**Source of truth for the picker sheet.** Mirrors Flutter `_showHowToCreateISPAccountBottomSheet` + `_showHowToSendOfficeBottomSheet` in `installation-supply-view/lib/modules/tasks/installation/view/confirm_customer_details_view.dart`. The Flutter app gates this picker behind a one-shot PayG-education modal (`showPayGSecurityBottomSheet` with the `paygIspRecharge` audio + `payg_education_isp_recharge` copy); in the Kotlin port that gating role is fulfilled by S15's full-screen audio brief itself — same audio asset (`isp_recharge.mp3`), same intent ("you are about to create the ISP account, here's the recharge context first"). The CTA inside Flutter's PayG modal is "ठीक है" / "Okay"; Kotlin uses "समझ गया" / "Got it" — semantically identical, kept as "समझ गया" for register consistency with our other audio screens.
 
 **Uses a Tertiary "समझ गया" / "Got it" link CTA** (not Primary, not checkbox). This is the component fulfilment of the v2.1 DRAFT's "GhostButton" concept — `WiomButton(type = WiomButtonType.Tertiary)`: no border, no fill, brand-pink label, 48.dp minimum touch height, full-width inside `WizardCtaBar`.
 
 **Enters from / exits to.**
 | Enters from | Exits to |
 |---|---|
-| s11 `CustomerDetails` | s16 `IspForm` via Tertiary CTA |
+| s11 `CustomerDetails` | s16 `IspForm` via picker sheet's terminal CTA (Self / WhatsApp / Call) |
 
-**Layout.** Same pattern as S03 PayG Acknowledge (left-aligned, speaker illustration + title + subtitle + progress bar + revealed CTA), with these differences:
+**Audio brief layout (always shown first).** Same pattern as S03 PayG Acknowledge (left-aligned, speaker illustration + title + subtitle + progress bar + revealed CTA), with these differences:
 - `WizardTopBar(title = "ISP जानकारी" / "ISP Info", onClose = { showExitDialog = true })` — has chrome (× visible)
-- Audio: `R.raw.isp_recharge`, `audioDurationMs = 9200L`, `bufferMs = 1300L`
+- Audio: `img/isp_recharge.mp3`, `audioDurationMs = 9200L`, `bufferMs = 1300L`
 - Title: `WiomLabels.pick("ISP 100 Mbps 30-दिन का प्लान", "ISP 100 Mbps 30-day plan")`
 - Subtitle: `WiomLabels.pick("यह एक सिस्टम एक्शन है, कस्टमर की पेमेंट नहीं है", "This is a system action, not a customer payment")`
-- CTA: **Tertiary** `WiomButton(type = Tertiary, label = WiomLabels.pick("समझ गया", "Got it"), onClick = { navController.navigate("s16") })`
+- CTA: **Tertiary** `WiomButton(type = Tertiary, label = WiomLabels.pick("समझ गया", "Got it"), onClick = { sheetStep = IspAccountSheetStep.Method })` — opens the picker sheet (does NOT navigate to S16 directly).
+
+#### 3.12.1 Picker sheet — step 1 (method choice)
+
+`ModalBottomSheet` rendered when `sheetStep == IspAccountSheetStep.Method`. Layout:
+1. Drag-handle 36×4 at top (Material 3 default)
+2. `Column(padding = WiomSpacing.lg, verticalArrangement = Arrangement.spacedBy(WiomSpacing.xxl))`
+3. Title — `Text(WiomLabels.pick("ISP अकाउंट कैसे बनाना चाहते हैं?", "How do you want to create the ISP account?"), 22.sp, Bold, textPrimary, lineHeight = 30.sp)`
+4. Two `OptionCard` children inside a `Row(arrangement = spacedBy(WiomSpacing.md))`, each `weight(1f)`:
+   - Self card: 📱 emoji in 56.dp `bgSecondary` circle + `Text(WiomLabels.pick("खुद पोर्टल पर", "Myself on portal"), 16.sp Bold, center)`. Tap → host's `onSelfPath()` lambda: dismisses sheet, navigates to S16, fires `Intent.ACTION_VIEW(Uri.parse(SELF_PORTAL_URL))` with `FLAG_ACTIVITY_NEW_TASK`. `SELF_PORTAL_URL = "https://www.google.com"` is a placeholder matching Flutter's hardcoded stub — real ISP portal URL is deferred until product wires it (see §10).
+   - Office card: 💼 emoji in 56.dp circle + `Text(WiomLabels.pick("ऑफिस को भेजें", "Send to office"), 16.sp Bold, center)`. Tap → host's `onPickOffice()`: flips `sheetStep` to `OfficeChannel`, sheet content swaps in place to step 2.
+5. `Spacer(WiomSpacing.xl)` at the bottom (system-bar inset; ModalBottomSheet handles nav-bar inset internally).
+
+#### 3.12.2 Picker sheet — step 2 (office channel choice)
+
+Same `ModalBottomSheet` instance with `sheetStep == IspAccountSheetStep.OfficeChannel`. Layout:
+1. Drag-handle (Material 3 default)
+2. Title — `Text(WiomLabels.pick("ऑफिस कैसे भेजना चाहते हैं?", "How do you want to send it to office?"), 22.sp, Bold, textPrimary, lineHeight = 30.sp)`
+3. Two `OptionCard` children inside a `Row(arrangement = spacedBy(WiomSpacing.md))`, each `weight(1f)`:
+   - WhatsApp card: 💬 emoji in 56.dp `bgSecondary` circle + `Text(WiomLabels.pick("WhatsApp से", "WhatsApp"), 16.sp Bold, center)`. Tap → host's `onWhatsAppPath()`: dismisses sheet, navigates to S16, fires WhatsApp share intent (see §3.12.3).
+   - Call card: 📞 emoji in 56.dp circle + `Text(WiomLabels.pick("कॉल कर के", "Call"), 16.sp Bold, center)`. Tap → host's `onCallPath()`: dismisses sheet, navigates to S16, fires `Intent.ACTION_DIAL(Uri.parse("tel:"))` (empty number — opens device dialer for the agent to dial the office contact themselves, matches Flutter `Utilities.launchUrl("tel:")`).
+4. `Spacer(WiomSpacing.xl)` at bottom.
+
+The agent can dismiss either sheet step via outside-tap or back-press (`onDismissRequest` → `sheetStep = Hidden`). Dismissal does NOT advance the wizard — the agent stays on S15's audio-brief CTA bar and can re-tap "समझ गया" to reopen the picker.
+
+#### 3.12.3 WhatsApp share intent payload
+
+When the WhatsApp CTA fires (`IspAccountActions.shareCustomerDetailsOnWhatsApp(...)`):
+1. Build customer-detail text in Flutter's exact format:
+   ```
+   *Customer Name* : <customerName or "—">
+   *Customer Address* : <displayAddress or "—">
+   *Customer Phone number* : <customerMobile or "—">
+   *Customer plan* : <planSpeedMbps> mbps
+   ```
+2. If both `vm.aadhaarState.frontData` and `backData` are non-null Bitmaps (captured at S08), merge them vertically with a 15px white border (matches Flutter `mergeImagesVertically(_, borderSize: 15)`) and write to the host app's cache directory (`<cacheDir>/isp_share_aadhaar.jpg`). Expose the file via `FileProvider` using authority `${applicationId}.provider` (host app declares this in `app/src/main/AndroidManifest.xml`; cache-path is whitelisted in `res/xml/file_paths.xml`).
+3. Build `Intent(Intent.ACTION_SEND)`:
+   - `type = "image/jpeg"` if Aadhaar bitmap available, else `"text/plain"`
+   - `EXTRA_TEXT = <message>`
+   - `EXTRA_STREAM = <merged-Aadhaar-content-uri>` if image available, with `FLAG_GRANT_READ_URI_PERMISSION`
+   - `setPackage("com.whatsapp")` — jumps straight into WhatsApp's contact picker
+   - `FLAG_ACTIVITY_NEW_TASK` — required because the call site is a composable side-effect, not an Activity context
+4. Catch `ActivityNotFoundException` (WhatsApp not installed) → copy text to system clipboard + show a `Toast.LENGTH_LONG` toast: `"WhatsApp not installed — customer details copied to clipboard"`. Matches Flutter's `copyMessageToClipboard(...)` fallback in `shareOnWhatsapp`.
+
+The wizard has already navigated to S16 by the time the share intent fires (terminal CTAs always run `onNext()` BEFORE the intent — matches Flutter `closeTask` → pop → launchUrl/share order). When the agent returns from WhatsApp via recents, the in-app stack is already on S16 with no transition flash.
 
 **Labels (inline):**
-- Title: `WiomLabels.pick("ISP 100 Mbps 30-दिन का प्लान", "ISP 100 Mbps 30-day plan")`
-- Subtitle: `WiomLabels.pick("यह एक सिस्टम एक्शन है, कस्टमर की पेमेंट नहीं है", "This is a system action, not a customer payment")`
-- CTA: `WiomLabels.pick("समझ गया", "Got it")`
+- Audio brief title: `WiomLabels.pick("ISP 100 Mbps 30-दिन का प्लान", "ISP 100 Mbps 30-day plan")`
+- Audio brief subtitle: `WiomLabels.pick("यह एक सिस्टम एक्शन है, कस्टमर की पेमेंट नहीं है", "This is a system action, not a customer payment")`
+- Acknowledge CTA: `WiomLabels.pick("समझ गया", "Got it")`
+- Sheet 1 title: `WiomLabels.pick("ISP अकाउंट कैसे बनाना चाहते हैं?", "How do you want to create the ISP account?")`
+- Sheet 1 self card: `WiomLabels.pick("खुद पोर्टल पर", "Myself on portal")`
+- Sheet 1 office card: `WiomLabels.pick("ऑफिस को भेजें", "Send to office")`
+- Sheet 2 title: `WiomLabels.pick("ऑफिस कैसे भेजना चाहते हैं?", "How do you want to send it to office?")`
+- Sheet 2 WhatsApp card: `WiomLabels.pick("WhatsApp से", "WhatsApp")`
+- Sheet 2 Call card: `WiomLabels.pick("कॉल कर के", "Call")`
+- WhatsApp-not-installed toast: `"WhatsApp not installed — customer details copied to clipboard"` (English-only; toasts are register-neutral and we don't ship a Hindi variant for fallbacks the agent rarely sees)
 
 ---
 
@@ -1856,8 +1909,10 @@ Items intentionally NOT built in v2.2.0 — captured here so reviewers don't fil
 10. **Real ISP credential validation** — S16 Username and Net Box ID validation runs against a simulated 1500 ms delay inside `MockInstallationRepository.verifyUsername` / `verifyDevice`. Real `NetBoxInventoryRepository.validate*()` API is deferred.
 11. **Real backend wiring for S16** — `InstallationRepository.verifyDevice`, `verifyUsername`, and `submitIspConfig` are currently only implemented in `MockInstallationRepository` with seeded test responses. The `RealInstallationRepository` impl returns `Result.failure(NotImplementedError(...))` for `verifyUsername` and `submitIspConfig`. Real backend contracts are pending from the product team; a follow-up PR will swap the mock impl for real HTTP calls once surface contracts ship. The mock flavor is what UAT walks today.
 12. **S16 device verification** — The release-01 `RouterConfigScreen` had a full device-verification step (verify router serial against inventory before collecting credentials). The v2.2.0 S16 introduces the Device ID entry + verification step per the Flutter PRD, but the backend call routes to the mock until real contracts ship — see item 11.
-13. **Restore-flow same-class morph bug** — Unrelated to install flow, still open from an earlier PR.
-14. **WizardTopBar "मदद" help link click handler** — Currently a visual affordance only; no modal/WhatsApp/FAQ wiring. Deferred until help-content source is decided.
+13. **S15 picker self-portal URL** — `IspAccountActions.DEFAULT_PORTAL_URL` is `"https://www.google.com"` — placeholder that matches Flutter's hardcoded stub. Real per-customer ISP portal URL needs a backend contract (which ISP, which login page, optional pre-fill of customer mobile) before this can be wired. Until then, the agent navigates from Google to the ISP's portal manually.
+14. **S15 picker PayG-education one-shot gate** — Flutter additionally checks `SharedPreferences("payg_education_post_isp_recharge_<userId>_<taskId>")` and a backend `getPayGEducationVisibility(userId, mobile)` flag to skip the audio gate after the first time per task. Kotlin always plays the brief — agents see it on every install. A future PR can mirror Flutter's one-shot prefs gate, but it's a UX debate (do we want repeat plays for safety?), not a defect.
+15. **Restore-flow same-class morph bug** — Unrelated to install flow, still open from an earlier PR.
+16. **WizardTopBar "मदद" help link click handler** — Currently a visual affordance only; no modal/WhatsApp/FAQ wiring. Deferred until help-content source is decided.
 
 ---
 
