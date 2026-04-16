@@ -868,11 +868,11 @@ In v2.1.1 the animation is still hardcoded (`LaunchedEffect + delay()`); real ba
 4. **Title** — `Text("${customer.name} जी से व्योम ऐप द्वारा पेमेंट करने को कहें" / "Ask ${customer.name} to pay via the Wiom app", 20.sp, Bold, textPrimary, textAlign = Center, lineHeight = 28.sp)`
 5. `Spacer(32.dp)`
 6. **Checklist card** — `Column(fillMaxWidth, clip 16.dp, background = WiomColors.bgSecondary, padding = 20.dp)`:
-   - `ChecklistItem("WiFi सेटअप", state = DONE)` — always DONE
+   - `ChecklistItem("WiFi नाम चुना" / "WiFi name set", state = DONE)` — always DONE; the customer chose a WiFi name + password during booking, well before the tech arrived. Past-perfect "नाम चुना" / "name set" makes the customer-side action explicit so the tech does not misread this as a wizard step they need to complete (the tech's WiFi step is the WifiConnectDialog at S16).
    - `ChecklistConnector(done = checklistState >= 2)`
-   - `ChecklistItem("आधार वेरिफिकेशन", state = if(>=2) DONE else if(>=1) IN_PROGRESS else PENDING)`
+   - `ChecklistItem(<tri-state>, state = if(>=2) DONE else if(>=1) IN_PROGRESS else PENDING)` — label morphs through three states: `"आधार वेरिफिकेशन"` / "Aadhaar verification" (PENDING) → `"आधार वेरिफाई हो रहा है"` / "Verifying Aadhaar" (IN_PROGRESS) → `"आधार वेरिफाई हुआ"` / "Aadhaar verified" (DONE).
    - `ChecklistConnector(done = checklistState >= 5)`
-   - `ChecklistItem(label = <tri-state>, state = if(>=5) DONE else if(>=3) IN_PROGRESS else PENDING)` — label is `"पेमेंट"` → `"पेमेंट करें"` → `"पेमेंट हो गयी"`
+   - `ChecklistItem(label = <tri-state>, state = if(>=5) DONE else if(>=3) IN_PROGRESS else PENDING)` — label morphs through three states: `"पेमेंट"` / "Payment" (PENDING) → `"पेमेंट हो रही है"` / "Processing payment" (IN_PROGRESS) → `"पेमेंट मिल गई"` / "Payment received" (DONE). All three forms are noun phrases / status descriptions — no imperative "Make payment" mid-state.
 7. **PayG info card** (conditional) — `AnimatedVisibility(visible = checklistState == 4, enter = fadeIn + expandVertically, exit = fadeOut + shrinkVertically)`:
    - `Spacer(16.dp)` + info card `Row(padding = 12.dp, background = WiomColors.infoBg, border = 1.dp WiomColors.info, clip 8.dp)` with `Text("PayG: कस्टमर सिर्फ ₹300 सिक्योरिटी फीस पे करता है", 14.sp, SemiBold, WiomColors.info)`
 
@@ -887,23 +887,25 @@ In v2.1.1 the animation is still hardcoded (`LaunchedEffect + delay()`); real ba
 **`ChecklistConnector`** — `Box(padding start = 13.dp, width = 2.dp, height = 24.dp, background = if (done) WiomColors.success else WiomColors.borderDefault)`.
 
 **State timeline (hardcoded):**
-| State | Time | WiFi | Aadhaar | Payment | Label | PayG card |
-|---|---|---|---|---|---|---|
-| 0 | 0–1000ms | DONE | PENDING | PENDING | "पेमेंट" | hidden |
-| 1 | 1000–1600ms | DONE | IN_PROGRESS | PENDING | "पेमेंट" | hidden |
-| 2 | 1600–2200ms | DONE | DONE | PENDING | "पेमेंट" | hidden |
-| 3 | 2200–3000ms | DONE | DONE | IN_PROGRESS | "पेमेंट" | hidden |
-| 4 | 3000–4200ms | DONE | DONE | IN_PROGRESS | "पेमेंट करें" | **visible** |
-| 5 | 4200–5400ms | DONE | DONE | DONE | "पेमेंट हो गयी" | hidden (exit anim) |
-| complete | 5400ms | — | — | — | — | `onComplete()` fires |
+| State | Time | WiFi | Aadhaar | Aadhaar label | Payment | Payment label | PayG card |
+|---|---|---|---|---|---|---|---|
+| 0 | 0–1000ms | DONE | PENDING | "आधार वेरिफिकेशन" | PENDING | "पेमेंट" | hidden |
+| 1 | 1000–1600ms | DONE | IN_PROGRESS | "आधार वेरिफाई हो रहा है" | PENDING | "पेमेंट" | hidden |
+| 2 | 1600–2200ms | DONE | DONE | "आधार वेरिफाई हुआ" | PENDING | "पेमेंट" | hidden |
+| 3 | 2200–3000ms | DONE | DONE | "आधार वेरिफाई हुआ" | IN_PROGRESS | "पेमेंट हो रही है" | hidden |
+| 4 | 3000–4200ms | DONE | DONE | "आधार वेरिफाई हुआ" | IN_PROGRESS | "पेमेंट हो रही है" | **visible** |
+| 5 | 4200–5400ms | DONE | DONE | "आधार वेरिफाई हुआ" | DONE | "पेमेंट मिल गई" | hidden (exit anim) |
+| complete | 5400ms | — | — | — | — | — | `onComplete()` fires |
 
 **Labels (inline):**
 - Title: `WiomLabels.format("{name} जी से व्योम ऐप द्वारा पेमेंट करने को कहें", "Ask {name} to pay via the Wiom app", name = customer.name)`
-- WiFi item: `WiomLabels.pick("WiFi सेटअप", "WiFi Setup")`
-- Aadhaar item: `WiomLabels.pick("आधार वेरिफिकेशन", "Aadhaar Verification")`
+- WiFi item: `WiomLabels.pick("WiFi नाम चुना", "WiFi name set")` — past-perfect, customer-side
+- Aadhaar item (pending): `WiomLabels.pick("आधार वेरिफिकेशन", "Aadhaar verification")`
+- Aadhaar item (in-progress): `WiomLabels.pick("आधार वेरिफाई हो रहा है", "Verifying Aadhaar")`
+- Aadhaar item (done): `WiomLabels.pick("आधार वेरिफाई हुआ", "Aadhaar verified")`
 - Payment (pending): `WiomLabels.pick("पेमेंट", "Payment")`
-- Payment (active): `WiomLabels.pick("पेमेंट करें", "Make payment")`
-- Payment (done): `WiomLabels.pick("पेमेंट हो गयी", "Payment completed")`
+- Payment (in-progress): `WiomLabels.pick("पेमेंट हो रही है", "Processing payment")`
+- Payment (done): `WiomLabels.pick("पेमेंट मिल गई", "Payment received")`
 - PayG hint: `WiomLabels.pick("PayG: कस्टमर सिर्फ ₹300 सिक्योरिटी फीस पे करता है", "PayG: Customer only pays ₹300 security fee")`
 
 ---
