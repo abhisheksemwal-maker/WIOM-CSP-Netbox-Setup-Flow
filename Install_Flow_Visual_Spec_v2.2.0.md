@@ -52,11 +52,11 @@ The installation flow is a sequential, single-session Android wizard run by the 
 
 Host (Home task drilldown) calls:
 ```kotlin
-navController.navigate(installationRedesignGraphRoute(taskId, customerMobile, bookingPaid))
+navController.navigate(installationRedesignGraphRoute(taskId, customerMobile, customerName, bookingPaid))
 ```
 from the SCHEDULED install card CTA in `feature/home/ui/drilldowns/install/`. Graph route:
 ```
-installation_redesign_graph/{taskId}/{customerMobile}/{bookingPaid}
+installation_redesign_graph/{taskId}/{customerMobile}/{customerName}/{bookingPaid}
 ```
 Start destination: `RedesignScreen.Entry` (see §1.2) — a 1-frame redirector that reads the per-task resume target and jumps to either `s3` (fresh start) or the saved resume screen.
 
@@ -195,7 +195,7 @@ Entry exists because release-01 needs resume semantics across drilldown re-entry
 
 `FlowViewModel` is graph-scoped (one instance shared across all 31 composables inside the graph) via:
 ```kotlin
-val parentEntry = remember(backStackEntry) { navController.getBackStackEntry("installation_redesign_graph/{taskId}/{customerMobile}/{bookingPaid}") }
+val parentEntry = remember(backStackEntry) { navController.getBackStackEntry("installation_redesign_graph/{taskId}/{customerMobile}/{customerName}/{bookingPaid}") }
 val vm: FlowViewModel = viewModel(viewModelStoreOwner = parentEntry)
 ```
 
@@ -1045,7 +1045,7 @@ The previous v2.1 DRAFT specced a full-width pink-tint "Save Aadhaar photos" car
    - Fallback (if Uri null) — centered `Text("आगे" / "पीछे", 14.sp, textHint)`
 10. `WizardCtaBar` → `WiomButton(type = Primary, label = WiomLabels.pick("ISP अकाउंट बनायें", "Create ISP account"), onClick = { navController.navigate("s15") })`
 
-**Note on hardcoded customer name.** The mock seed literal is `"Himanshu Singh"`. When real task data is wired through parent graph args, this comes from `TaskDetail.customerName`. See §Deferred items.
+**Customer name is graph-arg driven.** The display name is threaded into the wizard via the `customerName` arg on the install graph route (URL-encoded so spaces and Devanagari survive). `RedesignNavGraph` extracts it via `customerNameFromGraph(navController, backStackEntry)` and passes it to S04, S11, and S12 as a composable parameter. When the arg is blank (debug-panel jumps with no real task data), each composable falls back to `WiomLabels.pick("कस्टमर", "Customer")`. The mock seed in `MockTaskRepository` for the SCHEDULED INS-1047 install task is `"हिमांशु सिंह"`. For real backend data, the host populates `TaskDetail.customerName` and `TaskDrilldownScreen.onStartInstallation(taskId, customerMobile, customerName, bookingPaid)` threads it through to `installationRedesignGraphRoute(...)`.
 
 **Labels (inline):**
 - Title: `WiomLabels.pick("कस्टमर डिटेल्स", "Customer Details")`
@@ -1730,14 +1730,14 @@ Triggered by a tappable "i" info affordance on the customer card in S04 / S11. N
 **Entry:**
 ```kotlin
 navController.navigate(
-  installationRedesignGraphRoute(taskId, customerMobile, bookingPaid)
+  installationRedesignGraphRoute(taskId, customerMobile, customerName, bookingPaid)
 )
 ```
 Called from the SCHEDULED task drilldown CTA in `feature/home/ui/drilldowns/install/`.
 
 **Graph route:**
 ```
-installation_redesign_graph/{taskId}/{customerMobile}/{bookingPaid}
+installation_redesign_graph/{taskId}/{customerMobile}/{customerName}/{bookingPaid}
 ```
 
 **Start destination:** `RedesignScreen.Entry` (the 1-frame resume router, see §1.2).
@@ -1848,7 +1848,7 @@ Items intentionally NOT built in v2.2.0 — captured here so reviewers don't fil
 2. **Edge Case Dialog + Toast** — Infrastructure-only in the upstream reference; no consumers wired in v2.2.0. The failure paths across the wizard (optical OOR escalation, happy-code invalid, provisioning failure, WiFi auto-connect failure) still fall back to inline retry CTAs or navigation pops. Wiring the 14-case `EdgeCaseOverlay` system to real trigger sites is deferred to a later PR.
 3. **S29 `SpeedConfirmBottomSheet`** — Same as #1; the Lottie gauge renders but the "Looks good / Re-run" sheet is skipped.
 4. **Aadhaar download icon button `onClick` (S11)** — Stub. Real DigiLocker pull / local save via `MediaStore.Images.insertImage()` requires backend scope and is not part of this PR.
-5. **S11 Customer Details hardcoded customer name** — "Himanshu Singh" is a mock seed literal. When real task data is wired through parent graph args, this comes from `TaskDetail.customerName` via the `FlowViewModel`. Deferred until the task-data wiring PR.
+5. **(resolved in v2.2.0)** Customer name is now threaded through the install graph as the `customerName` arg and consumed by S04, S11, and S12. See "Customer name is graph-arg driven" note in §3.7 / §3.8 for the wiring + the `WiomLabels.pick("कस्टमर", "Customer")` fallback.
 6. **Aadhaar thumbnail aspect ratio** — Still `height = 120.dp` with no `aspectRatio` modifier. In the full-width Review state (S08 State 3) this crops ~30% of the card. Cosmetic, deferred.
 7. **Real CameraX quality check** — No on-device blur/unreadable check for Aadhaar, NetBox, or wiring photos. Agent must eyeball. Would need ML Kit or backend OCR round-trip — out of scope.
 8. **Real optical-power measurement** — S28 still runs the scripted 3-phase animation with hardcoded target values. Real polling via SSH or backend API is deferred.
